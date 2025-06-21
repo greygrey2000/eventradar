@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: 'postgres:latest'
+    environment:
+      - 'POSTGRES_DB=eventradar'
+      - 'POSTGRES_PASSWORD=grey'
+      - 'POSTGRES_USER=grey'
+    ports:
+      - '5432'
