@@ -20,4 +20,14 @@ public class User {
 
     @ElementCollection
     private List<String> interests;
+
+    @Override
+    public String toString() {
+        return "User{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                ", location='" + location + '\'' +
+                '}';
+    }
 }

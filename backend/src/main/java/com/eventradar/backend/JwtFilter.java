@@ -15,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.lang.NonNull;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.io.IOException;
 import java.util.List;
@@ -55,8 +56,16 @@ public class JwtFilter extends OncePerRequestFilter {
                 String email = jwtUtil.extractEmail(jwt);
                 Optional<User> userOpt = userRepository.findByEmail(email);
                 if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    var authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                    org.springframework.security.core.userdetails.UserDetails userDetails =
+                        org.springframework.security.core.userdetails.User
+                            .withUsername(user.getEmail())
+                            .password(user.getPassword())
+                            .authorities(authorities)
+                            .build();
                     UsernamePasswordAuthenticationToken token =
-                            new UsernamePasswordAuthenticationToken(userOpt.get(), null, List.of());
+                            new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(token);
                 }
             } catch (io.jsonwebtoken.ExpiredJwtException ex) {
@@ -82,8 +91,15 @@ public class JwtFilter extends OncePerRequestFilter {
                         accessCookie.setMaxAge(15 * 60);
                         accessCookie.setAttribute("SameSite", "Lax");
                         response.addCookie(accessCookie);
+                        var authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                        org.springframework.security.core.userdetails.UserDetails userDetails =
+                            org.springframework.security.core.userdetails.User
+                                .withUsername(user.getEmail())
+                                .password(user.getPassword())
+                                .authorities(authorities)
+                                .build();
                         UsernamePasswordAuthenticationToken token =
-                                new UsernamePasswordAuthenticationToken(user, null, List.of());
+                                new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(token);
                     }
                 }

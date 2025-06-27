@@ -1,5 +1,6 @@
 package com.eventradar.backend.controller;
 
+import com.eventradar.backend.dto.UserProfileDTO;
 import com.eventradar.backend.model.User;
 import com.eventradar.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,14 +26,14 @@ public class UserController {
         return userRepository.save(user);
     }
 
-    @GetMapping("/me")
+   @GetMapping("/me")
     public ResponseEntity<?> getMyProfile(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(401).body("Unauthorized");
         }
         String email = authentication.getName();
         return userRepository.findByEmail(email)
-                .<ResponseEntity<?>>map(user -> ResponseEntity.ok(user))
-                .orElseGet(() -> ResponseEntity.status(404).body("User not found"));
+                .map(user -> ResponseEntity.ok(new UserProfileDTO(user.getName(), user.getEmail(), user.getLocation(), user.getInterests())))
+                .orElseGet(() -> ResponseEntity.status(404).body(null));
     }
 }
