@@ -20,6 +20,7 @@ public class UserEventInteractionController {
 
     @PostMapping
     public UserEventInteraction createInteraction(@RequestBody UserEventInteraction interaction) {
+        // Erwartet jetzt ticketmasterEventId statt Event-Objekt
         return interactionRepository.save(interaction);
     }
 }

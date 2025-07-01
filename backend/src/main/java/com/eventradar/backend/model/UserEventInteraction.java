@@ -13,8 +13,8 @@ public class UserEventInteraction {
     @ManyToOne(optional = false)
     private User user;
 
-    @ManyToOne(optional = false)
-    private Event event;
+    // Statt Event-Objekt nur noch Ticketmaster-Event-ID speichern
+    private String ticketmasterEventId;
 
     private Boolean liked;
     private Boolean saved;

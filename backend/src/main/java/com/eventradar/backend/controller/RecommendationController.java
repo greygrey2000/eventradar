@@ -1,6 +1,5 @@
 package com.eventradar.backend.controller;
 
-import com.eventradar.backend.model.Event;
 import com.eventradar.backend.service.RecommendationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,9 +16,9 @@ public class RecommendationController {
     private RecommendationService recommendationService;
 
     @GetMapping
-    public ResponseEntity<List<Event>> getRecommendations(Authentication authentication) {
+    public ResponseEntity<List<String>> getRecommendations(Authentication authentication) {
         String email = authentication.getName();
-        List<Event> recommended = recommendationService.recommendForUser(email);
+        List<String> recommended = recommendationService.recommendForUser(email);
         return ResponseEntity.ok(recommended);
     }
 }
