@@ -23,7 +23,7 @@ public class EventController {
     private GeocodingService geocodingService;
 
     @GetMapping
-    public ResponseEntity<List<TicketmasterEventDTO>> getEvents(@RequestParam Map<String, String> params, Authentication authentication) {
+    public ResponseEntity<Map<String, Object>> getEvents(@RequestParam Map<String, String> params, Authentication authentication) {
         // Wenn kein latlong gesetzt ist, nutze User-Location
         if (!params.containsKey("latlong") && authentication != null && authentication.isAuthenticated()) {
             String email = authentication.getName();
@@ -40,7 +40,7 @@ public class EventController {
                 }
             }
         }
-        List<TicketmasterEventDTO> events = ticketmasterEventService.fetchEvents(params);
-        return ResponseEntity.ok(events);
+        Map<String, Object> response = ticketmasterEventService.fetchEventsWithPaging(params);
+        return ResponseEntity.ok(response);
     }
 }

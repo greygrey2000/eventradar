@@ -4,6 +4,9 @@ import com.eventradar.backend.model.RefreshToken;
 import com.eventradar.backend.model.User;
 import com.eventradar.backend.repository.RefreshTokenRepository;
 import com.eventradar.backend.repository.UserRepository;
+
+import jakarta.transaction.Transactional;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -39,7 +42,7 @@ public class RefreshTokenService {
     public boolean isExpired(RefreshToken token) {
         return token.getExpiryDate().isBefore(Instant.now());
     }
-
+    @Transactional
     public void deleteByUser(User user) {
         refreshTokenRepository.deleteByUser(user);
     }
