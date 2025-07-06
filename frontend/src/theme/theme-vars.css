@@ -1,0 +1,26 @@
+:root {
+  --filter-bg: #fff;
+  --filter-border: #ccc;
+  --filter-shadow: rgba(0,0,0,0.05);
+  --input-bg: #fff;
+  --input-color: #222;
+  --input-border: #ccc;
+  --btn-primary-bg: #1976d2;
+  --btn-primary-color: #fff;
+  --btn-secondary-bg: #fff;
+  --btn-secondary-color: #1976d2;
+  --btn-secondary-border: #1976d2;
+}
+[data-theme="dark"] {
+  --filter-bg: #23272f;
+  --filter-border: #444;
+  --filter-shadow: rgba(0,0,0,0.3);
+  --input-bg: #23272f;
+  --input-color: #f6f8fa;
+  --input-border: #444;
+  --btn-primary-bg: #1976d2;
+  --btn-primary-color: #fff;
+  --btn-secondary-bg: #23272f;
+  --btn-secondary-color: #90caf9;
+  --btn-secondary-border: #90caf9;
+}

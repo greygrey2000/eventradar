@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import api from "../api/apiClient";
@@ -22,13 +22,15 @@ const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({ value, onChange, 
   const [options, setOptions] = useState<VenueOption[]>([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!inputValue) {
       setOptions([]);
       return;
     }
-    const handler = setTimeout(async () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
         const params: any = { keyword: inputValue };
@@ -47,8 +49,10 @@ const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({ value, onChange, 
       } finally {
         setLoading(false);
       }
-    }, 350);
-    return () => clearTimeout(handler);
+    }, 400); // Debounce auf 400ms
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [inputValue, latlong]);
 
   return (

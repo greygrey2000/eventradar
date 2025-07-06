@@ -36,7 +36,8 @@ public class SecurityConfig {
                 }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/places/suggest").permitAll()
+                        .requestMatchers("/api/places/suggest/**").permitAll()
+                        .requestMatchers("/api/places/geocode").permitAll()
                         .requestMatchers("/api/suggest").permitAll()
                         .requestMatchers("/api/users/me").authenticated()
                         .anyRequest().authenticated()
