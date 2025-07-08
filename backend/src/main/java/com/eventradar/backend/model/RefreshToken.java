@@ -14,6 +14,7 @@ public class RefreshToken {
     @ManyToOne(optional = false)
     private User user;
 
+    // Enthält jetzt nur noch den Hash des Tokens
     @Column(nullable = false, unique = true)
     private String token;
 

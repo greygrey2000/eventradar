@@ -12,6 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,14 +34,31 @@ public class RefreshTokenService {
         this.userRepository = userRepository;
     }
 
+    private String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if(hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
+    }
+
     public String createRefreshToken(User user) {
         String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        String hashedToken = hashToken(refreshToken);
         RefreshToken tokenEntity = new RefreshToken();
         tokenEntity.setUser(user);
-        tokenEntity.setToken(refreshToken);
+        tokenEntity.setToken(hashedToken);
         tokenEntity.setExpiryDate(Instant.now().plusMillis(refreshTokenDurationMs));
         refreshTokenRepository.save(tokenEntity);
-        return refreshToken;
+        return refreshToken; // Nur das Original-Token an den Client senden
     }
 
     public Optional<RefreshToken> findByToken(String token) {
@@ -47,7 +67,10 @@ public class RefreshTokenService {
             String email = jwtUtil.extractEmailFromRefreshToken(token);
             Optional<User> userOpt = userRepository.findByEmail(email);
             if (userOpt.isPresent()) {
-                return refreshTokenRepository.findByToken(token);
+                String hashedToken = hashToken(token);
+                return refreshTokenRepository.findByToken(hashedToken)
+                        .filter(dbTok -> MessageDigest.isEqual(dbTok.getToken().getBytes(StandardCharsets.UTF_8),
+                                                               hashedToken.getBytes(StandardCharsets.UTF_8)));
             }
         } catch (Exception e) {
             return Optional.empty();

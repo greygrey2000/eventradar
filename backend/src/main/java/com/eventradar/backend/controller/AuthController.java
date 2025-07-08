@@ -7,8 +7,6 @@ import com.eventradar.backend.dto.AuthResponse;
 import com.eventradar.backend.model.User;
 import com.eventradar.backend.repository.UserRepository;
 import com.eventradar.backend.service.RefreshTokenService;
-import com.eventradar.backend.model.RefreshToken;
-import com.eventradar.backend.dto.RefreshRequest;
 import com.eventradar.backend.security.AuthRateLimiter;
 import io.github.bucket4j.Bucket;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,7 +117,9 @@ public class AuthController {
                 }
             }
         }
-        return csrfCookie != null && csrfHeader != null && csrfCookie.equals(csrfHeader);
+        return csrfCookie != null && csrfHeader != null &&
+                java.security.MessageDigest.isEqual(csrfCookie.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                                                  csrfHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @PostMapping("/refresh")

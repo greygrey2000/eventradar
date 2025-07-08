@@ -9,6 +9,8 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class CsrfHeaderFilter extends OncePerRequestFilter {
@@ -28,7 +30,10 @@ public class CsrfHeaderFilter extends OncePerRequestFilter {
                     }
                 }
             }
-            if (csrfCookie == null || csrfHeader == null || !csrfCookie.equals(csrfHeader)) {
+            boolean valid = csrfCookie != null && csrfHeader != null &&
+                    MessageDigest.isEqual(csrfCookie.getBytes(StandardCharsets.UTF_8),
+                                          csrfHeader.getBytes(StandardCharsets.UTF_8));
+            if (!valid) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType("application/json");
                 response.getWriter().write("{\"error\": \"CSRF-Token ungültig oder fehlt\"}");

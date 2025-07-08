@@ -71,7 +71,7 @@ public class JwtFilter extends OncePerRequestFilter {
                     org.springframework.security.core.userdetails.UserDetails userDetails =
                         org.springframework.security.core.userdetails.User
                             .withUsername(user.getEmail())
-                            .password(user.getPassword())
+                            .password("") // Avoid storing bcrypt hash in SecurityContext
                             .authorities(authorities)
                             .build();
                     UsernamePasswordAuthenticationToken token =
@@ -116,7 +116,7 @@ public class JwtFilter extends OncePerRequestFilter {
                         org.springframework.security.core.userdetails.UserDetails userDetails =
                             org.springframework.security.core.userdetails.User
                                 .withUsername(user.getEmail())
-                                .password(user.getPassword())
+                                .password("") // Avoid storing bcrypt hash in SecurityContext
                                 .authorities(authorities)
                                 .build();
                         UsernamePasswordAuthenticationToken token =
