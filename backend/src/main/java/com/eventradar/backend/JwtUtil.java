@@ -33,6 +33,19 @@ public class JwtUtil {
                 .getSubject();
     }
 
+    public String generateRefreshToken(String email) {
+        return Jwts.builder()
+                .setSubject(email)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000)) // 7 Tage
+                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public String extractEmailFromRefreshToken(String token) {
+        return extractEmail(token);
+    }
+
     private Key getKey() {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }

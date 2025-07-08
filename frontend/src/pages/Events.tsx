@@ -72,6 +72,10 @@ const Events: React.FC = () => {
     fetchEvents(page);
   }, [fetchEvents, page]);
 
+  React.useEffect(() => {
+    fetchEvents(page);
+  }, []);
+
   return (
     <div className="page-container">
       <div className="page-header" style={{flexDirection: "column", alignItems: "stretch", gap: 16}}>

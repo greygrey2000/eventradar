@@ -1,5 +1,6 @@
 package com.eventradar.backend.service;
 
+import com.eventradar.backend.JwtUtil;
 import com.eventradar.backend.model.RefreshToken;
 import com.eventradar.backend.model.User;
 import com.eventradar.backend.repository.RefreshTokenRepository;
@@ -7,6 +8,7 @@ import com.eventradar.backend.repository.UserRepository;
 
 import jakarta.transaction.Transactional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,8 @@ import java.util.UUID;
 public class RefreshTokenService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @Value("${jwt.refresh.expiration.ms:604800000}") // 7 Tage
     private long refreshTokenDurationMs;
@@ -27,16 +31,28 @@ public class RefreshTokenService {
         this.userRepository = userRepository;
     }
 
-    public RefreshToken createRefreshToken(User user) {
-        RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setUser(user);
-        refreshToken.setToken(UUID.randomUUID().toString());
-        refreshToken.setExpiryDate(Instant.now().plusMillis(refreshTokenDurationMs));
-        return refreshTokenRepository.save(refreshToken);
+    public String createRefreshToken(User user) {
+        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        RefreshToken tokenEntity = new RefreshToken();
+        tokenEntity.setUser(user);
+        tokenEntity.setToken(refreshToken);
+        tokenEntity.setExpiryDate(Instant.now().plusMillis(refreshTokenDurationMs));
+        refreshTokenRepository.save(tokenEntity);
+        return refreshToken;
     }
 
     public Optional<RefreshToken> findByToken(String token) {
-        return refreshTokenRepository.findByToken(token);
+        // Validierung des JWT-RefreshTokens
+        try {
+            String email = jwtUtil.extractEmailFromRefreshToken(token);
+            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (userOpt.isPresent()) {
+                return refreshTokenRepository.findByToken(token);
+            }
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+        return Optional.empty();
     }
 
     public boolean isExpired(RefreshToken token) {

@@ -17,12 +17,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.lang.NonNull;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(JwtFilter.class);
+
     @Autowired
     private JwtUtil jwtUtil;
 
@@ -45,11 +50,16 @@ public class JwtFilter extends OncePerRequestFilter {
             }
         }
         // 2. Fallback: JWT aus Authorization-Header
-        if (jwt == null) {
-            final String authHeader = request.getHeader("Authorization");
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                jwt = authHeader.substring(7);
+        final String authHeader = request.getHeader("Authorization");
+        if (jwt == null && authHeader != null && authHeader.startsWith("Bearer ")) {
+            // Blockiere explizit API-Calls mit Authorization-Header, wenn es kein Non-Browser-Client ist
+            if (!isNonBrowserClient(request)) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Authorization-Header nicht erlaubt. Bitte nutze Cookies.\"}");
+                return;
             }
+            jwt = authHeader.substring(7);
         }
         if (jwt != null) {
             try {
@@ -69,6 +79,8 @@ public class JwtFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(token);
                 }
             } catch (io.jsonwebtoken.ExpiredJwtException ex) {
+                String email = ex.getClaims().getSubject();
+                log.warn("Expired JWT detected for {}", email);
                 // Access-Token abgelaufen, versuche Refresh
                 String refreshTokenValue = null;
                 if (request.getCookies() != null) {
@@ -88,9 +100,18 @@ public class JwtFilter extends OncePerRequestFilter {
                         accessCookie.setHttpOnly(true);
                         accessCookie.setSecure(true);
                         accessCookie.setPath("/");
-                        accessCookie.setMaxAge(15 * 60);
+                        accessCookie.setMaxAge(15 * 60); // 15 Minuten, synchron zu Login/Refresh
                         accessCookie.setAttribute("SameSite", "Lax");
                         response.addCookie(accessCookie);
+                        // Setze neuen CSRF-Token als Cookie (wie beim Login/Refresh)
+                        String csrfToken = java.util.UUID.randomUUID().toString();
+                        Cookie csrfCookie = new Cookie("csrfToken", csrfToken);
+                        csrfCookie.setPath("/");
+                        csrfCookie.setHttpOnly(false);
+                        csrfCookie.setSecure(true);
+                        csrfCookie.setMaxAge(15 * 60);
+                        csrfCookie.setAttribute("SameSite", "Strict");
+                        response.addCookie(csrfCookie);
                         var authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
                         org.springframework.security.core.userdetails.UserDetails userDetails =
                             org.springframework.security.core.userdetails.User
@@ -106,5 +127,15 @@ public class JwtFilter extends OncePerRequestFilter {
             } catch (Exception ignored) {}
         }
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Erkenne Non-Browser-Clients (z.B. Postman, curl) anhand des User-Agent-Headers.
+     */
+    private boolean isNonBrowserClient(HttpServletRequest request) {
+        String ua = request.getHeader("User-Agent");
+        if (ua == null) return false;
+        String uaLower = ua.toLowerCase();
+        return uaLower.contains("postman") || uaLower.contains("curl") || uaLower.contains("httpie") || uaLower.contains("insomnia");
     }
 }

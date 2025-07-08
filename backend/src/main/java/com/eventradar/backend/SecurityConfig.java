@@ -22,6 +22,9 @@ public class SecurityConfig {
     @Autowired
     private JwtFilter jwtFilter;
 
+    @Autowired
+    private CsrfHeaderFilter csrfHeaderFilter;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
@@ -40,10 +43,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/places/geocode").permitAll()
                         .requestMatchers("/api/suggest").permitAll()
                         .requestMatchers("/api/users/me").authenticated()
+                        .requestMatchers("/api/events/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(csrfHeaderFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 

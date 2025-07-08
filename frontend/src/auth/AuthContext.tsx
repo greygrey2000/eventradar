@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, ReactNode } from "react";
 import api from "../api/apiClient";
+import { postWithCsrf } from "../api/csrf";
 
 // UserProfile type (an dein Backend anpassen)
 export interface UserProfile {
@@ -36,7 +37,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
-    await api.post("/auth/logout");
+    await postWithCsrf("/auth/logout");
     setUser(null);
   };
 
