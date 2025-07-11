@@ -20,7 +20,7 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
         return org.springframework.security.core.userdetails.User
                 .withUsername(user.getEmail())
-                .password("") // Avoid storing bcrypt hash in SecurityContext
+                .password(user.getPassword()) // ← unbedingt den BCM-Hash mitgeben
                 .authorities(Collections.emptyList())
                 .build();
     }

@@ -40,6 +40,9 @@ public class JwtFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
+        String method = request.getMethod();
+        String path = request.getServletPath();
+        log.debug("[JWT-Filter] {} {} aufgerufen", method, path);
         String jwt = null;
         // 1. Versuche JWT aus Cookie zu lesen
         if (request.getCookies() != null) {
@@ -54,6 +57,7 @@ public class JwtFilter extends OncePerRequestFilter {
         if (jwt == null && authHeader != null && authHeader.startsWith("Bearer ")) {
             // Blockiere explizit API-Calls mit Authorization-Header, wenn es kein Non-Browser-Client ist
             if (!isNonBrowserClient(request)) {
+                log.warn("[JWT-Filter] 403 für {} {}: Authorization-Header nicht erlaubt", method, path);
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType("application/json");
                 response.getWriter().write("{\"error\":\"Authorization-Header nicht erlaubt. Bitte nutze Cookies.\"}");
@@ -124,7 +128,9 @@ public class JwtFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(token);
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.warn("[JWT-Filter] Exception für {} {}: {}", method, path, e.getMessage());
+            }
         }
         filterChain.doFilter(request, response);
     }

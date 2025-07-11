@@ -34,36 +34,14 @@ public class TestDataInitializer {
 
             userRepo.saveAll(List.of(user1, user2));
 
-            // Interactions
-            UserEventInteraction i1 = new UserEventInteraction();
-            i1.setUser(user1);
-            i1.setLiked(true);
-            i1.setSaved(true);
-            i1.setIgnored(false);
-            i1.setRating(5);
-
-            UserEventInteraction i2 = new UserEventInteraction();
-            i2.setUser(user1);
-            i2.setLiked(false);
-            i2.setSaved(false);
-            i2.setIgnored(true);
-            i2.setRating(null);
-
-            UserEventInteraction i3 = new UserEventInteraction();
-            i3.setUser(user2);
-            i3.setLiked(true);
-            i3.setSaved(false);
-            i3.setIgnored(false);
-            i3.setRating(4);
-
-            UserEventInteraction i4 = new UserEventInteraction();
-            i4.setUser(user2);
-            i4.setLiked(true);
-            i4.setSaved(true);
-            i4.setIgnored(false);
-            i4.setRating(5);
-
-            interactionRepo.saveAll(List.of(i1, i2, i3, i4));
+            // Beispiel für Interaktionen (optional)
+            // UserEventInteraction i1 = new UserEventInteraction();
+            // i1.setUser(user1);
+            // i1.setLiked(true);
+            // i1.setSaved(true);
+            // i1.setIgnored(false);
+            // i1.setRating(5);
+            // interactionRepo.save(i1);
         };
     }
 }

@@ -47,19 +47,27 @@ public class AuthController {
         String ip = httpRequest.getRemoteAddr();
         Bucket bucket = authRateLimiter.resolveBucket(ip, "register");
         if (!bucket.tryConsume(1)) {
+            log.warn("[REGISTER] Rate limit für IP {} erreicht", ip);
             return ResponseEntity.status(429).body("Zu viele Registrierungsversuche. Bitte warte einen Moment.");
         }
         if (userRepo.existsByEmail(request.getEmail())) {
+            log.warn("[REGISTER] Versuch mit bereits existierender Email: {} von IP {}", request.getEmail(), ip);
             return ResponseEntity.badRequest().body("Email already in use");
         }
-        User user = new User();
-        user.setEmail(request.getEmail());
-        user.setPassword(encoder.encode(request.getPassword()));
-        user.setName(request.getName());
-        user.setLocation(request.getLocation());
-        user.setInterests(request.getInterests());
-        userRepo.save(user);
-        return ResponseEntity.ok("User registered");
+        try {
+            User user = new User();
+            user.setEmail(request.getEmail());
+            user.setPassword(encoder.encode(request.getPassword()));
+            user.setName(request.getName());
+            user.setLocation(request.getLocation());
+            user.setInterests(request.getInterests());
+            userRepo.save(user);
+            log.info("[REGISTER] Neuer User registriert: {} von IP {}", request.getEmail(), ip);
+            return ResponseEntity.ok("User registered");
+        } catch (Exception e) {
+            log.error("[REGISTER] Fehler bei Registrierung von {}: {}", request.getEmail(), e.getMessage());
+            return ResponseEntity.status(500).body("Fehler bei der Registrierung");
+        }
     }
 
     @PostMapping("/login")
@@ -67,43 +75,48 @@ public class AuthController {
         String ip = httpRequest.getRemoteAddr();
         Bucket bucket = authRateLimiter.resolveBucket(ip, "login");
         if (!bucket.tryConsume(1)) {
+            log.warn("[LOGIN] Rate limit für IP {} erreicht", ip);
             return ResponseEntity.status(429).body("Zu viele Login-Versuche. Bitte warte einen Moment.");
         }
-        Authentication auth = authManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
-        User user = userRepo.findByEmail(request.getEmail()).orElseThrow();
-        log.info("User {} logged in", request.getEmail());
-        String accessToken = jwtUtil.generateToken(request.getEmail());
-        String refreshToken = refreshTokenService.createRefreshToken(user);
-
-        // CSRF-Token generieren (z. B. UUID, in Produktion kryptographisch sicher!)
-        String csrfToken = java.util.UUID.randomUUID().toString();
-        Cookie csrfCookie = new Cookie("csrfToken", csrfToken);
-        csrfCookie.setPath("/");
-        csrfCookie.setHttpOnly(false); // Muss im Frontend lesbar sein
-        csrfCookie.setSecure(true); // Nur über HTTPS
-        csrfCookie.setMaxAge(15 * 60); // 15 Minuten, synchron zu AccessToken
-        csrfCookie.setAttribute("SameSite", "Strict");
-        response.addCookie(csrfCookie);
-
-        // accessToken und refreshToken als HttpOnly-Cookies setzen (optional)
-        Cookie accessCookie = new Cookie("accessToken", accessToken);
-        accessCookie.setPath("/");
-        accessCookie.setHttpOnly(true);
-        accessCookie.setSecure(true);
-        accessCookie.setMaxAge(15 * 60); // 15 Minuten, synchron zu CSRF
-        accessCookie.setAttribute("SameSite", "Lax");
-        response.addCookie(accessCookie);
-
-        Cookie refreshCookie = new Cookie("refreshToken", refreshToken);
-        refreshCookie.setPath("/");
-        refreshCookie.setHttpOnly(true);
-        refreshCookie.setSecure(true);
-        refreshCookie.setMaxAge(7 * 24 * 60 * 60);
-        refreshCookie.setAttribute("SameSite", "Lax");
-        response.addCookie(refreshCookie);
-
-        return ResponseEntity.ok(new AuthResponse(accessToken, refreshToken));
+        try {
+            Authentication auth = authManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
+            User user = userRepo.findByEmail(request.getEmail()).orElseThrow();
+            log.info("[LOGIN] User {} erfolgreich eingeloggt von IP {}", request.getEmail(), ip);
+            String accessToken = jwtUtil.generateToken(request.getEmail());
+            String refreshToken = refreshTokenService.createRefreshToken(user);
+            // CSRF-Token generieren
+            String csrfToken = java.util.UUID.randomUUID().toString();
+            Cookie csrfCookie = new Cookie("csrfToken", csrfToken);
+            csrfCookie.setPath("/");
+            csrfCookie.setHttpOnly(false);
+            csrfCookie.setSecure(true);
+            csrfCookie.setMaxAge(15 * 60);
+            csrfCookie.setAttribute("SameSite", "Strict");
+            response.addCookie(csrfCookie);
+            // accessToken und refreshToken als HttpOnly-Cookies setzen
+            Cookie accessCookie = new Cookie("accessToken", accessToken);
+            accessCookie.setPath("/");
+            accessCookie.setHttpOnly(true);
+            accessCookie.setSecure(true);
+            accessCookie.setMaxAge(15 * 60);
+            accessCookie.setAttribute("SameSite", "Lax");
+            response.addCookie(accessCookie);
+            Cookie refreshCookie = new Cookie("refreshToken", refreshToken);
+            refreshCookie.setPath("/");
+            refreshCookie.setHttpOnly(true);
+            refreshCookie.setSecure(true);
+            refreshCookie.setMaxAge(7 * 24 * 60 * 60);
+            refreshCookie.setAttribute("SameSite", "Lax");
+            response.addCookie(refreshCookie);
+            return ResponseEntity.ok(new AuthResponse(accessToken, refreshToken));
+        } catch (org.springframework.security.core.AuthenticationException e) {
+            log.warn("[LOGIN] Fehlgeschlagener Login für {} von IP {}: {}", request.getEmail(), ip, e.getMessage());
+            return ResponseEntity.status(401).body("Falsche Email oder Passwort");
+        } catch (Exception e) {
+            log.error("[LOGIN] Fehler bei Login für {} von IP {}: {}", request.getEmail(), ip, e.getMessage());
+            return ResponseEntity.status(500).body("Fehler beim Login");
+        }
     }
 
     private boolean isValidCsrf(HttpServletRequest request) {
@@ -127,6 +140,7 @@ public class AuthController {
         String ip = request.getRemoteAddr();
         Bucket bucket = authRateLimiter.resolveBucket(ip, "refresh");
         if (!bucket.tryConsume(1)) {
+            log.warn("[REFRESH] Rate limit für IP {} erreicht", ip);
             response.setContentType("application/json");
             try {
                 response.getWriter().write("{\"error\": \"Zu viele Token-Refresh-Versuche. Bitte warte einen Moment.\"}");
@@ -134,13 +148,13 @@ public class AuthController {
             return ResponseEntity.status(429).body("Zu viele Token-Refresh-Versuche. Bitte warte einen Moment.");
         }
         if (!isValidCsrf(request)) {
+            log.warn("[REFRESH] CSRF-Token ungültig oder fehlt für IP {}", ip);
             response.setContentType("application/json");
             try {
                 response.getWriter().write("{\"error\": \"CSRF-Token ungültig oder fehlt\"}");
             } catch (Exception ignored) {}
             return ResponseEntity.status(403).body("CSRF-Token ungültig oder fehlt");
         }
-        // Lies Refresh-Token aus Cookie
         String refreshTokenValue = null;
         if (request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
@@ -150,68 +164,80 @@ public class AuthController {
             }
         }
         if (refreshTokenValue == null) {
+            log.warn("[REFRESH] Kein Refresh-Token im Cookie für IP {}", ip);
             return ResponseEntity.status(401).body((AuthResponse) null);
         }
-        return refreshTokenService.findByToken(refreshTokenValue)
-                .filter(token -> !refreshTokenService.isExpired(token))
-                .map(token -> {
-                    // Refresh Token Rotation: alten Token löschen, neuen generieren
-                    refreshTokenService.deleteByUser(token.getUser());
-                    String newRefreshToken = refreshTokenService.createRefreshToken(token.getUser());
-                    String newAccessToken = jwtUtil.generateToken(token.getUser().getEmail());
-                    // Setze neuen Access-Token als Cookie
-                    Cookie accessCookie = new Cookie("accessToken", newAccessToken);
-                    accessCookie.setHttpOnly(true);
-                    accessCookie.setSecure(true);
-                    accessCookie.setPath("/");
-                    accessCookie.setMaxAge(15 * 60);
-                    accessCookie.setAttribute("SameSite", "Lax");
-                    response.addCookie(accessCookie);
-                    // Setze neuen Refresh-Token als Cookie
-                    Cookie refreshCookie = new Cookie("refreshToken", newRefreshToken);
-                    refreshCookie.setHttpOnly(true);
-                    refreshCookie.setSecure(true);
-                    refreshCookie.setPath("/");
-                    refreshCookie.setMaxAge(7 * 24 * 60 * 60);
-                    refreshCookie.setAttribute("SameSite", "Lax");
-                    response.addCookie(refreshCookie);
-                    return ResponseEntity.ok(new AuthResponse(newAccessToken, newRefreshToken));
-                })
-                .orElseGet(() -> ResponseEntity.status(401).body((AuthResponse) null));
+        try {
+            return refreshTokenService.findByToken(refreshTokenValue)
+                    .filter(token -> !refreshTokenService.isExpired(token))
+                    .map(token -> {
+                        refreshTokenService.deleteByUser(token.getUser());
+                        String newRefreshToken = refreshTokenService.createRefreshToken(token.getUser());
+                        String newAccessToken = jwtUtil.generateToken(token.getUser().getEmail());
+                        Cookie accessCookie = new Cookie("accessToken", newAccessToken);
+                        accessCookie.setHttpOnly(true);
+                        accessCookie.setSecure(true);
+                        accessCookie.setPath("/");
+                        accessCookie.setMaxAge(15 * 60);
+                        accessCookie.setAttribute("SameSite", "Lax");
+                        response.addCookie(accessCookie);
+                        Cookie refreshCookie = new Cookie("refreshToken", newRefreshToken);
+                        refreshCookie.setHttpOnly(true);
+                        refreshCookie.setSecure(true);
+                        refreshCookie.setPath("/");
+                        refreshCookie.setMaxAge(7 * 24 * 60 * 60);
+                        refreshCookie.setAttribute("SameSite", "Lax");
+                        response.addCookie(refreshCookie);
+                        log.info("[REFRESH] Erfolgreicher Token-Refresh für User {} von IP {}", token.getUser().getEmail(), ip);
+                        return ResponseEntity.ok(new AuthResponse(newAccessToken, newRefreshToken));
+                    })
+                    .orElseGet(() -> {
+                        log.warn("[REFRESH] Ungültiger oder abgelaufener Refresh-Token für IP {}", ip);
+                        return ResponseEntity.status(401).body((AuthResponse) null);
+                    });
+        } catch (Exception e) {
+            log.error("[REFRESH] Fehler beim Token-Refresh für IP {}: {}", ip, e.getMessage());
+            return ResponseEntity.status(500).body("Fehler beim Token-Refresh");
+        }
     }
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
+        String ip = request.getRemoteAddr();
         if (!isValidCsrf(request)) {
+            log.warn("[LOGOUT] CSRF-Token ungültig oder fehlt für IP {}", ip);
             response.setContentType("application/json");
             try {
                 response.getWriter().write("{\"error\": \"CSRF-Token ungültig oder fehlt\"}");
             } catch (Exception ignored) {}
             return ResponseEntity.status(403).body("CSRF-Token ungültig oder fehlt");
         }
-
-        // Cookies löschen
-        Cookie accessCookie = new Cookie("accessToken", null);
-        accessCookie.setHttpOnly(true);
-        accessCookie.setSecure(true);
-        accessCookie.setPath("/");
-        accessCookie.setMaxAge(0);
-        accessCookie.setAttribute("SameSite", "Lax");
-        response.addCookie(accessCookie);
-
-        Cookie refreshCookie = new Cookie("refreshToken", null);
-        refreshCookie.setHttpOnly(true);
-        refreshCookie.setSecure(true);
-        refreshCookie.setPath("/");
-        refreshCookie.setMaxAge(0);
-        refreshCookie.setAttribute("SameSite", "Lax");
-        response.addCookie(refreshCookie);
-
-        // Optional: RefreshToken aus DB löschen
-        if (authentication != null && authentication.isAuthenticated()) {
-            String email = authentication.getName();
-            userRepo.findByEmail(email).ifPresent(refreshTokenService::deleteByUser);
+        try {
+            Cookie accessCookie = new Cookie("accessToken", null);
+            accessCookie.setHttpOnly(true);
+            accessCookie.setSecure(true);
+            accessCookie.setPath("/");
+            accessCookie.setMaxAge(0);
+            accessCookie.setAttribute("SameSite", "Lax");
+            response.addCookie(accessCookie);
+            Cookie refreshCookie = new Cookie("refreshToken", null);
+            refreshCookie.setHttpOnly(true);
+            refreshCookie.setSecure(true);
+            refreshCookie.setPath("/");
+            refreshCookie.setMaxAge(0);
+            refreshCookie.setAttribute("SameSite", "Lax");
+            response.addCookie(refreshCookie);
+            if (authentication != null && authentication.isAuthenticated()) {
+                String email = authentication.getName();
+                userRepo.findByEmail(email).ifPresent(refreshTokenService::deleteByUser);
+                log.info("[LOGOUT] User {} erfolgreich ausgeloggt von IP {}", email, ip);
+            } else {
+                log.info("[LOGOUT] Logout ohne Authentifizierung von IP {}", ip);
+            }
+            return ResponseEntity.ok("Logged out");
+        } catch (Exception e) {
+            log.error("[LOGOUT] Fehler beim Logout von IP {}: {}", ip, e.getMessage());
+            return ResponseEntity.status(500).body("Fehler beim Logout");
         }
-        return ResponseEntity.ok("Logged out");
     }
 }
