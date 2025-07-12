@@ -1,6 +1,5 @@
 package com.eventradar.backend.service;
 
-import com.eventradar.backend.JwtUtil;
 import com.eventradar.backend.model.RefreshToken;
 import com.eventradar.backend.model.User;
 import com.eventradar.backend.repository.RefreshTokenRepository;
@@ -23,8 +22,6 @@ import java.util.UUID;
 public class RefreshTokenService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
-    @Autowired
-    private JwtUtil jwtUtil;
 
     @Value("${jwt.refresh.expiration.ms:604800000}") // 7 Tage
     private long refreshTokenDurationMs;
@@ -51,31 +48,29 @@ public class RefreshTokenService {
     }
 
     public String createRefreshToken(User user) {
-        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
-        String hashedToken = hashToken(refreshToken);
+        // Erzeuge einen kryptographisch sicheren zufälligen Token (z.B. UUID + SecureRandom)
+        String rawToken;
+        try {
+            rawToken = UUID.randomUUID().toString() + "-" + java.security.SecureRandom.getInstanceStrong().nextLong();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SecureRandom instance not available", e);
+        }
+        String hashedToken = hashToken(rawToken);
+        // Optional: Alte Tokens für den User löschen (nur ein aktives Token pro User)
+        refreshTokenRepository.deleteByUser(user);
         RefreshToken tokenEntity = new RefreshToken();
         tokenEntity.setUser(user);
         tokenEntity.setToken(hashedToken);
         tokenEntity.setExpiryDate(Instant.now().plusMillis(refreshTokenDurationMs));
         refreshTokenRepository.save(tokenEntity);
-        return refreshToken; // Nur das Original-Token an den Client senden
+        return rawToken; // Nur das Original-Token an den Client senden
     }
 
-    public Optional<RefreshToken> findByToken(String token) {
-        // Validierung des JWT-RefreshTokens
-        try {
-            String email = jwtUtil.extractEmailFromRefreshToken(token);
-            Optional<User> userOpt = userRepository.findByEmail(email);
-            if (userOpt.isPresent()) {
-                String hashedToken = hashToken(token);
-                return refreshTokenRepository.findByToken(hashedToken)
-                        .filter(dbTok -> MessageDigest.isEqual(dbTok.getToken().getBytes(StandardCharsets.UTF_8),
-                                                               hashedToken.getBytes(StandardCharsets.UTF_8)));
-            }
-        } catch (Exception e) {
-            return Optional.empty();
-        }
-        return Optional.empty();
+    public Optional<RefreshToken> findByToken(String rawToken) {
+        String hashedToken = hashToken(rawToken);
+        return refreshTokenRepository.findByToken(hashedToken)
+                .filter(dbTok -> MessageDigest.isEqual(dbTok.getToken().getBytes(StandardCharsets.UTF_8),
+                                                       hashedToken.getBytes(StandardCharsets.UTF_8)));
     }
 
     public boolean isExpired(RefreshToken token) {

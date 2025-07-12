@@ -10,6 +10,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -36,6 +37,9 @@ public class JwtFilter extends OncePerRequestFilter {
 
     @Autowired
     private RefreshTokenService refreshTokenService;
+
+    @Value("${app.csrf.secret:change_this_secret}")
+    private String csrfSecret;
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
@@ -107,8 +111,8 @@ public class JwtFilter extends OncePerRequestFilter {
                         accessCookie.setMaxAge(15 * 60); // 15 Minuten, synchron zu Login/Refresh
                         accessCookie.setAttribute("SameSite", "Lax");
                         response.addCookie(accessCookie);
-                        // Setze neuen CSRF-Token als Cookie (wie beim Login/Refresh)
-                        String csrfToken = java.util.UUID.randomUUID().toString();
+                        // Setze neuen CSRF-Token als Cookie (HMAC)
+                        String csrfToken = com.eventradar.backend.controller.AuthController.staticGenerateCsrfToken(user.getEmail(), csrfSecret);
                         Cookie csrfCookie = new Cookie("csrfToken", csrfToken);
                         csrfCookie.setPath("/");
                         csrfCookie.setHttpOnly(false);

@@ -22,4 +22,29 @@ api.interceptors.request.use(config => {
   return config;
 });
 
+// Response interceptor: Bei 403 (CSRF) neues Token holen und Request wiederholen
+api.interceptors.response.use(
+  response => response,
+  async error => {
+    const originalRequest = error.config;
+    if (
+      error.response &&
+      error.response.status === 403 &&
+      !originalRequest._retry &&
+      /csrf/i.test(error.response.data?.message || "")
+    ) {
+      originalRequest._retry = true;
+      // Neues CSRF-Token anfordern (Endpoint ggf. anpassen)
+      await api.get("/auth/csrf");
+      // Token ist jetzt als Cookie gesetzt, Request wiederholen
+      const csrf = getCookie("csrfToken");
+      if (csrf) {
+        originalRequest.headers["X-CSRF-Token"] = csrf;
+      }
+      return api(originalRequest);
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

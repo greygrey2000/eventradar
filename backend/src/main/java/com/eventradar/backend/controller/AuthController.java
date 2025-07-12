@@ -10,6 +10,7 @@ import com.eventradar.backend.service.RefreshTokenService;
 import com.eventradar.backend.security.AuthRateLimiter;
 import io.github.bucket4j.Bucket;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,6 +23,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
 
 
 @RestController
@@ -41,6 +46,50 @@ public class AuthController {
     private RefreshTokenService refreshTokenService;
     @Autowired
     private AuthRateLimiter authRateLimiter;
+
+    @Value("${app.csrf.secret:change_this_secret}")
+    private String csrfSecret;
+
+    private String generateCsrfToken(String userId) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(csrfSecret.getBytes(), "HmacSHA256");
+            mac.init(secretKey);
+            byte[] hmac = mac.doFinal(userId.getBytes());
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hmac);
+        } catch (Exception e) {
+            throw new RuntimeException("CSRF HMAC error", e);
+        }
+    }
+
+    // CSRF-Token-Generierung für andere Komponenten zugänglich machen
+    public static String staticGenerateCsrfToken(String userId, String secret) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(secret.getBytes(), "HmacSHA256");
+            mac.init(secretKey);
+            byte[] hmac = mac.doFinal(userId.getBytes());
+            return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hmac);
+        } catch (Exception e) {
+            throw new RuntimeException("CSRF HMAC error", e);
+        }
+    }
+
+    private boolean isValidCsrf(HttpServletRequest request, String userId) {
+        String csrfHeader = request.getHeader("X-CSRF-Token");
+        String csrfCookie = null;
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("csrfToken".equals(cookie.getName())) {
+                    csrfCookie = cookie.getValue();
+                    break;
+                }
+            }
+        }
+        String expected = generateCsrfToken(userId);
+        return csrfCookie != null && csrfHeader != null &&
+                csrfCookie.equals(csrfHeader) && csrfCookie.equals(expected);
+    }
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
@@ -85,8 +134,8 @@ public class AuthController {
             log.info("[LOGIN] User {} erfolgreich eingeloggt von IP {}", request.getEmail(), ip);
             String accessToken = jwtUtil.generateToken(request.getEmail());
             String refreshToken = refreshTokenService.createRefreshToken(user);
-            // CSRF-Token generieren
-            String csrfToken = java.util.UUID.randomUUID().toString();
+            // CSRF-Token generieren (HMAC)
+            String csrfToken = generateCsrfToken(user.getEmail());
             Cookie csrfCookie = new Cookie("csrfToken", csrfToken);
             csrfCookie.setPath("/");
             csrfCookie.setHttpOnly(false);
@@ -119,22 +168,6 @@ public class AuthController {
         }
     }
 
-    private boolean isValidCsrf(HttpServletRequest request) {
-        String csrfHeader = request.getHeader("X-CSRF-Token");
-        String csrfCookie = null;
-        if (request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if ("csrfToken".equals(cookie.getName())) {
-                    csrfCookie = cookie.getValue();
-                    break;
-                }
-            }
-        }
-        return csrfCookie != null && csrfHeader != null &&
-                java.security.MessageDigest.isEqual(csrfCookie.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                                                  csrfHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    }
-
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(HttpServletRequest request, HttpServletResponse response) {
         String ip = request.getRemoteAddr();
@@ -147,7 +180,22 @@ public class AuthController {
             } catch (Exception ignored) {}
             return ResponseEntity.status(429).body("Zu viele Token-Refresh-Versuche. Bitte warte einen Moment.");
         }
-        if (!isValidCsrf(request)) {
+        // User aus JWT extrahieren
+        String userId = null;
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("accessToken".equals(cookie.getName())) {
+                    try {
+                        userId = jwtUtil.extractEmail(cookie.getValue());
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+        if (userId == null) {
+            log.warn("[REFRESH] Kein Access-Token für CSRF-Check");
+            return ResponseEntity.status(401).body((AuthResponse) null);
+        }
+        if (!isValidCsrf(request, userId)) {
             log.warn("[REFRESH] CSRF-Token ungültig oder fehlt für IP {}", ip);
             response.setContentType("application/json");
             try {
@@ -171,7 +219,9 @@ public class AuthController {
             return refreshTokenService.findByToken(refreshTokenValue)
                     .filter(token -> !refreshTokenService.isExpired(token))
                     .map(token -> {
+                        // One-time-use: delete the old refresh token
                         refreshTokenService.deleteByUser(token.getUser());
+                        // Create new refresh token
                         String newRefreshToken = refreshTokenService.createRefreshToken(token.getUser());
                         String newAccessToken = jwtUtil.generateToken(token.getUser().getEmail());
                         Cookie accessCookie = new Cookie("accessToken", newAccessToken);
@@ -204,7 +254,15 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
         String ip = request.getRemoteAddr();
-        if (!isValidCsrf(request)) {
+        String userId = null;
+        if (authentication != null && authentication.isAuthenticated()) {
+            userId = authentication.getName();
+        }
+        if (userId == null) {
+            log.warn("[LOGOUT] Kein User für CSRF-Check");
+            return ResponseEntity.status(401).body("Nicht authentifiziert");
+        }
+        if (!isValidCsrf(request, userId)) {
             log.warn("[LOGOUT] CSRF-Token ungültig oder fehlt für IP {}", ip);
             response.setContentType("application/json");
             try {
@@ -227,6 +285,14 @@ public class AuthController {
             refreshCookie.setMaxAge(0);
             refreshCookie.setAttribute("SameSite", "Lax");
             response.addCookie(refreshCookie);
+            // CSRF-Cookie löschen
+            Cookie csrfCookie = new Cookie("csrfToken", null);
+            csrfCookie.setPath("/");
+            csrfCookie.setHttpOnly(false);
+            csrfCookie.setSecure(true);
+            csrfCookie.setMaxAge(0);
+            csrfCookie.setAttribute("SameSite", "Strict");
+            response.addCookie(csrfCookie);
             if (authentication != null && authentication.isAuthenticated()) {
                 String email = authentication.getName();
                 userRepo.findByEmail(email).ifPresent(refreshTokenService::deleteByUser);
@@ -239,5 +305,23 @@ public class AuthController {
             log.error("[LOGOUT] Fehler beim Logout von IP {}: {}", ip, e.getMessage());
             return ResponseEntity.status(500).body("Fehler beim Logout");
         }
+    }
+
+    @PostMapping("/csrf")
+    public ResponseEntity<?> csrf(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).body("Unauthorized");
+        }
+        String userId = authentication.getName();
+        String csrfToken = generateCsrfToken(userId);
+        Cookie csrfCookie = new Cookie("csrfToken", csrfToken);
+        csrfCookie.setHttpOnly(false); // Muss im JS lesbar sein
+        csrfCookie.setSecure(true);
+        csrfCookie.setPath("/");
+        csrfCookie.setMaxAge(15 * 60); // 15 Minuten
+        // SameSite-Attribut manuell setzen
+        String cookieHeader = String.format("csrfToken=%s; Max-Age=%d; Path=/; Secure; SameSite=Strict", csrfToken, 15 * 60);
+        response.setHeader("Set-Cookie", cookieHeader);
+        return ResponseEntity.ok().body(java.util.Map.of("csrfToken", csrfToken));
     }
 }

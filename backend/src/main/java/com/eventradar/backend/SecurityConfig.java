@@ -17,7 +17,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.security.web.csrf.CsrfFilter;
-import org.springframework.security.config.Customizer;
 
 @Configuration
 @EnableWebSecurity

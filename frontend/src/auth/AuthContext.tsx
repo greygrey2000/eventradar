@@ -39,6 +39,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = async () => {
     await postWithCsrf("/auth/logout");
     setUser(null);
+    // CSRF-Cookie im Browser löschen (sofern möglich)
+    document.cookie = "csrfToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    // Optional: Seite neu laden, um alle States zu resetten
+    // window.location.reload();
   };
 
   return (
